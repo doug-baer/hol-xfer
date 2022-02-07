@@ -6,7 +6,7 @@ import os
 from hol.ovf import scrub_the_ovf
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def perform_ovf_scrubbing(vapp_template_name, repository):

@@ -9,7 +9,7 @@ from pathlib import Path
 BYTES_PER_MB = 1024 ** 2
 BYTES_PER_GB = 1024 ** 3
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def read_hol_xfer_config(yaml_config_path: str):

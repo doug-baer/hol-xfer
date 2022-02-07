@@ -6,7 +6,7 @@ from hol.xfer import read_hol_xfer_config, read_hol_xfer_auth, get_cloud_creds, 
 from hol.ovf import BYTES_PER_GB
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def perform_vcd_export(cloud_host,
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     parser.add_argument("--cleanup_pattern", required=False,
                         dest="cleanup_pattern", default='HOL-',
                         help='pattern used to identify "cleanup-able" items')
-    parser.add_argument("--config", required=False, default='config.yaml',
+    parser.add_argument("--config", required=False, default='../config.yaml',
                         dest="yaml_config_path",
                         help='path to the config file (YAML)')
     parser.add_argument("--machine_output", required=False, action="store_true",

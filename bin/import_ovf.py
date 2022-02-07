@@ -4,7 +4,7 @@ import os
 from hol.xfer import read_hol_xfer_config, read_hol_xfer_auth, get_cloud_creds
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def perform_vcd_import(cloud_host,
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     parser.add_argument("--repository", required=False,
                         dest="repository", default='/hol/lib',
                         help="path to the local repository")
-    parser.add_argument("--config", required=False, default='config.yaml',
+    parser.add_argument("--config", required=False, default='../config.yaml',
                         dest="yaml_config_path",
                         help='path to the config file (YAML)')
     parser.add_argument("--machine_output", required=False, action="store_true",
