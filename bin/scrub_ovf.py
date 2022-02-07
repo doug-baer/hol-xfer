@@ -3,7 +3,7 @@
 # EXAMPLE: scrub_ovf.py --repository /hol/lib --vapp_template_name 2vm_blank
 
 import os
-from hol.ovf import scrub_the_ovf
+from hol.ovf import scrub_the_ovf, update_the_manifest
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +18,7 @@ def perform_ovf_scrubbing(vapp_template_name, repository):
         try:
             scrub_the_ovf(ovf_file=full_file_target,
                           backup_file=backup_file_path)
+            update_the_manifest(ovf_file=full_file_target)
         except PermissionError as err:
             logging.error(f'unable to write backup file? {err}')
     else:
