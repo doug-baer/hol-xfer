@@ -97,7 +97,7 @@ def scrub_the_ovf(ovf_file, backup_file=None):
     """
     perform various 'cleanup' operations on an OVF file
     :param ovf_file: full path to OVF file
-    :param backup_file: full path to backup file (default replaces ".ovf"" with ".ovf.backup")
+    :param backup_file: full path to backup file (default replaces ".ovf" with ".ovf.backup")
     :return:
     """
     fixed_network_name = False
