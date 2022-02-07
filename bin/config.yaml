@@ -1,0 +1,13 @@
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# Configuration for HOL Replication Node
+# # # # # # # # # # # # # # # # # # # # # # # # #
+
+# Defaults
+Tools:
+  ovftool: "/usr/bin/ovftool"
+  scripts: "/hol/bin"
+  credentials: "/hol/SECURE/hol.yaml"
+
+Library:
+  path: "/hol/lib"
+  min_free_gb: 400
