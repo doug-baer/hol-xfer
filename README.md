@@ -38,7 +38,7 @@ Validate that the export has downloaded completely/successfully
 
 "Scrub" the download to clean up the OVF file and pre pit for clean import to another instance.
 
-`$ bin/scrub_ovf.py lib/2vm_blank/2vm_blank.ovf`
+`$ bin/scrub_ovf.py --repository /hol/lib --vapp_template_name 2vm_blank`
 
 Import the file to another cloud
 
@@ -46,9 +46,9 @@ Import the file to another cloud
 
 
 TODO:
-o "pull and verify" to grab a template from another node rather than a VCD instance
-o "scrub_ovf" to clean up an OVF for succesful import (remove "objectionable" settings, adjust disks, networking, etc.)
-o "mailbox" and daemon to watch for work to do
+* "pull and verify" to grab a template from another node rather than a VCD instance
+* "scrub_ovf" to clean up an OVF for succesful import (remove "objectionable" settings, adjust disks, networking, etc.)
+* "mailbox" and daemon to watch for work to do
 
 -Doug Baer
 07 February 2022
