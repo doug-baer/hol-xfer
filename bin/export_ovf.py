@@ -28,6 +28,10 @@ def perform_vcd_export(cloud_host,
     ovf_file_name = f'{vapp_template_name}.ovf'
     full_file_target = os.path.join(
         repository, vapp_template_name, ovf_file_name)
+    if os.path.isfile(full_file_target):
+        logging.info(
+            f'Export for {vapp_template_name} already exists -- LUCKY DAY!')
+        return
     # TODO: I think the "&vdc={cloud_ovdc}" portion of the ovftool url is optional... check that!
     cloud_source = f"'vcloud://{user_name}:{vcd_password}@{cloud_host}:443/?org={cloud_org}" \
                    f"&catalog={cloud_catalog}&{media_type}={vapp_template_name}'"
@@ -40,7 +44,7 @@ def perform_vcd_export(cloud_host,
     bad_source = os.path.join(
         repository, vapp_template_name, vapp_template_name)
     if os.path.exists(bad_source):
-        print("working around OVFTOOL bug...")
+        logging.info("working around OVFTOOL bug...")
         bad_source_files = os.path.join(bad_source, '*.*')
         good_source = os.path.join(repository, vapp_template_name)
         os.system(f'mv {bad_source_files} {good_source} && rmdir {bad_source}')
@@ -83,7 +87,13 @@ if __name__ == '__main__':
         logging.error(f"Failed to locate ovftool at {ovftool_path}")
         exit(1)
 
-    # TODO: see if we already have the export on disk before doing anything else!
+    ovf_file_name = f'{args.vapp_template_name}.ovf'
+    full_file_target = os.path.join(
+        args.repository, args.vapp_template_name, ovf_file_name)
+    if os.path.isfile(full_file_target):
+        logging.info(
+            f'Export for {args.vapp_template_name} already exists -- LUCKY DAY!')
+        exit(0)
 
     creds = read_hol_xfer_auth(config['Tools']['credentials'])
     min_free_gb = config['Library']['min_free_gb']
