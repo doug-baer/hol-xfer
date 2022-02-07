@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 
-# EXAMPLE: import_ovf.py --config config.yaml --cloud_host vcore3-us04.oc.vmware.com
-# --cloud_org us04-3-hol-dev-d --cloud_catalog HOL-Dev-Resources
-# --vapp_template_name 2vm_blank --machine_output
-
 import os
 from hol.xfer import read_hol_xfer_config, read_hol_xfer_auth, get_cloud_creds
 import logging

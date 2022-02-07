@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 
-# EXAMPLE: export_ovf.py --config config.yaml --cloud_host vcore3-us04.oc.vmware.com
-# --cloud_org us04-3-hol-dev-d --cloud_catalog HOL-Dev-Resources
-# --vapp_template_name 2vm_blank --machine_output
-
 import os
-import base64
 from hol.xfer import read_hol_xfer_config, read_hol_xfer_auth, get_cloud_creds, \
     cleanup_oldest, get_free_space_bytes
-from hol.xfer import BYTES_PER_GB
+from hol.ovf import BYTES_PER_GB
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
