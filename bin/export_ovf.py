@@ -83,6 +83,8 @@ if __name__ == '__main__':
         logging.error(f"Failed to locate ovftool at {ovftool_path}")
         exit(1)
 
+    # TODO: see if we already have the export on disk before doing anything else!
+
     creds = read_hol_xfer_auth(config['Tools']['credentials'])
     min_free_gb = config['Library']['min_free_gb']
     if os.path.isdir(args.repository):
