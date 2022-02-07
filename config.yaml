@@ -5,8 +5,15 @@
 # Defaults
 Tools:
   ovftool: "/usr/bin/ovftool"
+  rsync: "/usr/bin/rsync"
+  lftp: "/usr/bin/lftp"
   scripts: "/hol/hol-xfer/bin"
   credentials: "/hol/SECURE/hol.yaml"
+
+Infrastructure:
+  ssh_username: "catalog"
+  parallel_files: 4
+  parallel_segments: 4
 
 Library:
   path: "/hol/lib"
