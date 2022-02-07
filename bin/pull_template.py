@@ -3,12 +3,11 @@
 # NOTE: requires rsync, lftp
 
 import os
-import sys
 import time
 from hol.xfer import read_hol_xfer_config
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 dry_run = ''  # '--dry-run'
 
@@ -46,23 +45,21 @@ def pull_and_verify(configuration, vapp_template_name, repository,
                             f'--no-perms --parallel={parallel_files} --delete-first {dry_run} ' \
                             f'sftp://{ssh_user}:xxx@{source_catalog}:{source_template_path} ' \
                             f'${repository}/"'
-    logging.info(f'LFTP command: {fast_download_command}')
+    logging.debug(f'LFTP command: {fast_download_command}')
     # Call the download
     # TODO: what is the best way to call this?
-    logging.debug('NOT ACTUALLY RUNNING COMMAND YET')
     os.system(fast_download_command)
     # WAIT
     transfer_end = time.time() - transfer_start
-
+    logging.info("=== LFTP complete, running RSYNC to validate ===")
     # run the rsync
     rsync_start = time.time()
     # -ItvPrh short switches.... expanded here for clarity (except removing the --partial aspect of -P)
     verify_command = f'{rsync_path} --times --ignore-times --recursive --progress --human-readable ' \
                      f'{dry_run} {ssh_user}@{source_catalog}:{source_template_path}/ ' \
-                     f'{repository}/{vapp_template_name}/"'
-    logging.info(f'RSYNC command: {verify_command}')
+                     f'{repository}/{vapp_template_name}/'
+    logging.debug(f'RSYNC command: {verify_command}')
     # TODO: what is the best way to call this?
-    logging.debug('NOT ACTUALLY RUNNING COMMAND YET')
     os.system(verify_command)
     # WAIT
     rsync_end = time.time() - rsync_start
