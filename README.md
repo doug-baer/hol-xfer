@@ -13,6 +13,10 @@ instance is the most efficient model for getting content in and out of a VCD ins
 The Linux VM requires sufficient local storage to handle at least one exported template. 
 A minimum of 1 TB is recommended, depending on the on-disk sizes of your templates, though more is better!
 
+REQUIRES: VMNware ovftool compatible with your version(s) of CLoud Director. 
+
+Main configuration is performed in hol/config.yaml
+
 
 EXAMPLE Workflow
 
