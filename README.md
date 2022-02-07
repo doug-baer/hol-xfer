@@ -13,9 +13,9 @@ instance is the most efficient model for getting content in and out of a VCD ins
 The Linux VM requires sufficient local storage to handle at least one exported template. 
 A minimum of 1 TB is recommended, depending on the on-disk sizes of your templates, though more is better!
 
-REQUIRES: VMware ovftool compatible with your version(s) of CLoud Director. 
+REQUIRES: VMware ovftool compatible with your version(s) of Cloud Director. 
 
-Main configuration is performed in hol/config.yaml
+Main configuration is performed in hol-xfer/config.yaml
 
 
 EXAMPLE Workflow
@@ -26,11 +26,11 @@ EXAMPLE Workflow
 
 `$ tmux attach -t CONTENT`
 
-`$ cd /hol`
+`$ cd /hol/hol-xfer`
 
 Export from the source cloud
 
-`$ bin/export_ovf.py  --cloud_host VCD-CLOUD.vmware.com --cloud_org VCD-ORG --cloud_catalog HOL-Source-Catalog --vapp_template_name TEST_TEMPLATE`
+`$ bin/export_ovf.py  --config config.yaml --cloud_host VCD-CLOUD.vmware.com --cloud_org VCD-ORG --cloud_catalog HOL-Source-Catalog --vapp_template_name TEST_TEMPLATE`
 
 Validate that the export has downloaded completely/successfully
 
@@ -38,17 +38,16 @@ Validate that the export has downloaded completely/successfully
 
 "Scrub" the download to clean up the OVF file and pre pit for clean import to another instance.
 
-`$ bin/scrub_ovf.py lib/2vm_blank/2vm_blank.ovf`
+`$ bin/scrub_ovf.py --repository /hol/lib --vapp_template_name 2vm_blank`
 
 Import the file to another cloud
 
-`$ bin/import_ovf.py --cloud_host VCD-CLOUD2.vmware.com --cloud_org VCD-ORG2 --cloud_catalog HOL-Target-Catalog --vapp_template_name TEST_TEMPLATE`
+`$ bin/import_ovf.py --config config.yaml --cloud_host VCD-CLOUD2.vmware.com --cloud_org VCD-ORG2 --cloud_catalog HOL-Target-Catalog --vapp_template_name TEST_TEMPLATE`
 
 
 TODO:
-o "pull and verify" to grab a template from another node rather than a VCD instance
-o "scrub_ovf" to clean up an OVF for succesful import (remove "objectionable" settings, adjust disks, networking, etc.)
-o "mailbox" and daemon to watch for work to do
+* "pull and verify" to grab a template from another node rather than a VCD instance (replicate from remote rather than export and transfer as part of the same process -- less risk and more recoverability options.
+* "mailbox" and daemon to watch for work to do (pull based on request/notification in mailbox)
 
 -Doug Baer
 07 February 2022
