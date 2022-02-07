@@ -5,7 +5,7 @@
 # Defaults
 Tools:
   ovftool: "/usr/bin/ovftool"
-  scripts: "/hol/bin"
+  scripts: "/hol/hol-xfer/bin"
   credentials: "/hol/SECURE/hol.yaml"
 
 Library:
