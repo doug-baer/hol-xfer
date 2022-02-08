@@ -3,22 +3,21 @@
 # NOTE: requires rsync, lftp
 
 import os
-import sys
 import time
 from hol.xfer import read_hol_xfer_config
 import logging
+import subprocess
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
-dry_run = '--dry-run'
-no_lftp_ok = True
+dry_run = ''  # '--dry-run'
 
 
 def check_requirements(configuration):
     try:
         rsync_path = configuration['Tools']['rsync']
         lftp_path = configuration['Tools']['lftp']
-        if os.path.exists(rsync_path) and (os.path.exists(lftp_path) or no_lftp_ok):
+        if os.path.exists(rsync_path) and os.path.exists(lftp_path):
             return True
         else:
             logging.error(
@@ -46,27 +45,24 @@ def pull_and_verify(configuration, vapp_template_name, repository,
     fast_download_command = f'{lftp_path} -c "mirror --use-pget-n={parallel_segments} ' \
                             f'--no-perms --parallel={parallel_files} --delete-first {dry_run} ' \
                             f'sftp://{ssh_user}:xxx@{source_catalog}:{source_template_path} ' \
-                            f'${repository}/"'
-    logging.info(f'LFTP command: {fast_download_command}')
-    # Call the download
-    # TODO: what is the best way to call this?
-    logging.debug('NOT ACTUALLY RUNNING COMMAND YET')
-    # os.system(fast_download_command)
-    # WAIT
+                            f'{repository}/"'
+    logging.debug(f'LFTP command: {fast_download_command}')
+    # TODO: what is the best way to call this?  this one does not like subprocess.run()
+    transfer_start = time.time()
+    os.system(fast_download_command)
     transfer_end = time.time() - transfer_start
-
-    # run the rsync
+    logging.info("=== LFTP complete, running RSYNC to validate ===")
+    # using subprocess.run here... is this "better" ?
+    source = f'{ssh_user}@{source_catalog}:{source_template_path}/'
+    target = f'{repository}/{vapp_template_name}/'
+    verify_command_list = [rsync_path, '--times', '--ignore-times', '--recursive',
+                           '--human-readable', '--stats', source, target]
     rsync_start = time.time()
-    # -ItvPrh short switches.... expanded here for clarity (except removing the --partial aspect of -P)
-    verify_command = f'{rsync_path} --times --ignore-times --recursive --progress --human-readable ' \
-                     f'{ssh_user}@{source_catalog}:{source_template_path}/ ' \
-                     f'{repository}/{vapp_template_name}/"'
-    logging.info(f'RSYNC command: {verify_command}')
-    # TODO: what is the best way to call this?
-    logging.debug('NOT ACTUALLY RUNNING COMMAND YET')
-    # os.system(fast_download_command)
-    # WAIT
+    verify_result = subprocess.run(
+        verify_command_list, capture_output=True, text=True)
     rsync_end = time.time() - rsync_start
+    # print statistics at the end of the rsync
+    print(verify_result.stdout)
 
     logging.info(f'Copy complete, {str(round(transfer_end,2))} seconds to copy and '
                  f'{str(round(rsync_end,2))} to verify the copy.')
