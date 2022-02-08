@@ -1,0 +1,14 @@
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# # Cloud Director Credential configuration for Replication Nodes - EXAMPLE
+# # # # # # # # # # # # # # # # # # # # # # # # # #
+
+# NOTE: Endpoint/Token API_TOKEN type is only relevant to HOL Central Credential Repository
+# other use cases will be USER_PASSWORD type and expect a "service account" that is the same
+# across all VCD instances
+
+Default:
+  Type: "USER_PASSWORD"  # options are "API_TOKEN" or "USER_PASSWORD"
+  Endpoint: ""
+  Token: ""
+  Username: "VCD_USERNAME"
+  Password: "VCD_PASSWORD."
