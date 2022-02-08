@@ -47,7 +47,6 @@ def pull_and_verify(configuration, vapp_template_name, repository,
                             f'sftp://{ssh_user}:xxx@{source_catalog}:{source_template_path} ' \
                             f'{repository}/"'
     logging.debug(f'LFTP command: {fast_download_command}')
-    # Call the download
     # TODO: what is the best way to call this?  this one does not like subprocess.run()
     transfer_start = time.time()
     os.system(fast_download_command)
@@ -62,6 +61,7 @@ def pull_and_verify(configuration, vapp_template_name, repository,
     verify_result = subprocess.run(
         verify_command_list, capture_output=True, text=True)
     rsync_end = time.time() - rsync_start
+    # print statistics at the end of the rsync
     print(verify_result.stdout)
 
     logging.info(f'Copy complete, {str(round(transfer_end,2))} seconds to copy and '
