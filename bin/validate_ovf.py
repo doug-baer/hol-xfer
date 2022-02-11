@@ -17,7 +17,8 @@ def perform_ovf_validation(vapp_template_name, repository):
         else:
             logging.error(
                 'missing or incorrectly-sized component file(s)')
-    logging.error(f'unable to find OVF file: {full_file_target}')
+    else:
+        logging.error(f'unable to find OVF file: {full_file_target}')
     print('FAIL')
     return 99
 
