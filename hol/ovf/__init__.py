@@ -5,6 +5,7 @@ from hashlib import sha256
 import re
 import logging
 import shutil
+from time import ctime
 from prettytable import PrettyTable
 
 BYTES_PER_MB = 2 ** 20
@@ -126,10 +127,11 @@ def scrub_the_ovf(ovf_file, backup_file=None):
     root = tree.getroot()
 
     # create the backup
-    tree.write(backup_file_path,
-               encoding='utf-8',
-               xml_declaration=True,
-               method='xml')
+    tree.write(
+        backup_file_path,
+        encoding='utf-8',
+        xml_declaration=True,
+        method='xml')
 
     # No CustomizeOnInstantiate!
     print(f'=== CustomizeOnInstantiate ===')
@@ -334,10 +336,11 @@ def scrub_the_ovf(ovf_file, backup_file=None):
                 print("ERROR: Unable to get disk size")
                 specified_capacity_bytes = '0'
 
-    tree.write(ovf_file,
-               encoding='utf-8',
-               xml_declaration=True,
-               method='xml')
+    tree.write(
+        ovf_file,
+        encoding='utf-8',
+        xml_declaration=True,
+        method='xml')
 
 
 def get_disk_map_from_ovf(the_ovf):
@@ -399,8 +402,8 @@ def get_disk_map_from_ovf(the_ovf):
                             if resource.text.upper() == 'HARD DISK':
                                 hard_disk_name = (item.findall(
                                     'rasd:ElementName', namespaces=namespaces))[0].text
-                                hard_disk_file = (item.findall('rasd:HostResource',
-                                                               namespaces=namespaces))[0].text[10:]
+                                hard_disk_file = (item.findall(
+                                    'rasd:HostResource', namespaces=namespaces))[0].text[10:]
                                 logging.debug(
                                     f"\t{hard_disk_name} => {hard_disk_file}")
                                 disks[disks_by_vmdisk[hard_disk_file].file_ref].vm_name = vm_name
@@ -469,3 +472,106 @@ def remap_ovf_for_rsync(source_file,
             logging.error(
                 f'error renaming {old_file_name} to {new_file_name} in {lib_dir}')
     print(t)
+
+
+def build_extra_config_item(required: str, key: str, value: str):
+    extra = ET.Element('vmw:ExtraConfig')
+    # this controls the newline and spacing after the element... it is suboptimal
+    extra.tail = '\n                '
+    extra.set('ovf:required', required)
+    extra.set('vmw:key', key)
+    extra.set('vmw:value', value)
+    return extra
+
+
+def bubble_the_ovf(rtc_start_time: int, ovf_file: str, backup_file=None):
+    """
+    stuff all VMs into a "time bubble": the clock is set to the specified time at each boot
+    :param ovf_file: full path to OVF file
+    :param backup_file: full path to backup file (default replaces ".ovf" with ".ovf.backup")
+    :param rtc_start_time: epoch time for Time Bubble start
+    :return:
+    """
+    if backup_file is None:
+        backup_file_path = ovf_file.replace('.ovf', '.ovf.backup')
+    else:
+        backup_file_path = backup_file
+
+    namespaces = register_all_namespaces(ovf_file)
+    tree = ET.parse(ovf_file)
+    root = tree.getroot()
+
+    # create the backup
+    tree.write(backup_file_path, encoding='utf-8',
+               xml_declaration=True, method='xml')
+
+    # Time Bubble
+    print(
+        f'\n=== Time Bubble: {rtc_start_time} => {ctime(rtc_start_time)} ===')
+    found_existing_rtc = False
+    for vsc in root.findall('ovf:VirtualSystemCollection', namespaces=namespaces):
+        for vs in vsc.findall('ovf:VirtualSystem', namespaces=namespaces):
+            vm_name = vs.attrib.get(
+                '{http://schemas.dmtf.org/ovf/envelope/1}id')
+            print(f'{vm_name}')
+            for vhs in vs.findall('ovf:VirtualHardwareSection', namespaces=namespaces):
+                for item in vhs.findall('vmw:ExtraConfig', namespaces=namespaces):
+                    if item.get('{http://www.vmware.com/schema/ovf}key') == 'rtc.startTime':
+                        found_existing_rtc = True
+                        epoch = item.get(
+                            '{http://www.vmware.com/schema/ovf}value')
+                        print(
+                            f'Found existing bubble config: {epoch} => Date: {ctime(int(epoch))}')
+                # add the bubble properties
+                if not found_existing_rtc:
+                    vhs.append(build_extra_config_item(
+                        'true', 'time.synchronize.tools.enable', '0'))
+                    vhs.append(build_extra_config_item(
+                        'true', 'time.synchronize.tools.startup', '0'))
+                    vhs.append(build_extra_config_item(
+                        'true', 'rtc.startTime', str(rtc_start_time)))
+                # TODO: why do these append without a newline? Does it matter aside from aesthetics?
+                # TODO: future - if rtc_start_time is 0, remove the bubble?
+    tree.write(ovf_file, encoding='utf-8', xml_declaration=True, method='xml')
+
+
+def unbubble_the_ovf(ovf_file: str, backup_file=None):
+    """
+    undo a "time bubble"
+    :param ovf_file: full path to OVF file
+    :param backup_file: full path to backup file (default replaces ".ovf" with ".ovf.backup")
+    :return:
+    """
+    if backup_file is None:
+        backup_file_path = ovf_file.replace('.ovf', '.ovf.backup')
+    else:
+        backup_file_path = backup_file
+
+    namespaces = register_all_namespaces(ovf_file)
+    tree = ET.parse(ovf_file)
+    root = tree.getroot()
+
+    # create the backup
+    tree.write(backup_file_path, encoding='utf-8',
+               xml_declaration=True, method='xml')
+
+    # UNDO a Time Bubble
+    bubble_keys = ('rtc.startTime', 'time.synchronize.tools.enable',
+                   'time.synchronize.tools.startup')
+    for vsc in root.findall('ovf:VirtualSystemCollection', namespaces=namespaces):
+        for vs in vsc.findall('ovf:VirtualSystem', namespaces=namespaces):
+            vm_name = vs.attrib.get(
+                '{http://schemas.dmtf.org/ovf/envelope/1}id')
+            print(f'{vm_name}')
+            for vhs in vs.findall('ovf:VirtualHardwareSection', namespaces=namespaces):
+                for item in vhs.findall('vmw:ExtraConfig', namespaces=namespaces):
+                    item_key = item.get(
+                        '{http://www.vmware.com/schema/ovf}key')
+                    if item_key in bubble_keys:
+                        if item_key == 'rtc.startTime':
+                            epoch = item.get(
+                                '{http://www.vmware.com/schema/ovf}value')
+                            print(
+                                f'Scrubbing existing bubble config: {epoch} => Date: {ctime(int(epoch))}')
+                        vhs.remove(item)
+    tree.write(ovf_file, encoding='utf-8', xml_declaration=True, method='xml')
