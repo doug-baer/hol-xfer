@@ -3,11 +3,25 @@ import math
 import os
 from hashlib import sha256
 import re
+import logging
+import shutil
+from time import ctime
+from prettytable import PrettyTable
 
 BYTES_PER_MB = 2 ** 20
 BYTES_PER_GB = 2 ** 30
 BYTES_PER_TB = 2 ** 40
 EZT_BUG_TRIGGER_PERCENTAGE = 60
+
+logging.basicConfig(level=logging.INFO)
+
+
+class OvfDisk:
+    vm_name = ''
+    file_name = ''
+    disk_id = ''
+    file_ref = ''
+    vm_disk_id = ''
 
 
 def get_sha256_hash(file_path):
@@ -113,10 +127,11 @@ def scrub_the_ovf(ovf_file, backup_file=None):
     root = tree.getroot()
 
     # create the backup
-    tree.write(backup_file_path,
-               encoding='utf-8',
-               xml_declaration=True,
-               method='xml')
+    tree.write(
+        backup_file_path,
+        encoding='utf-8',
+        xml_declaration=True,
+        method='xml')
 
     # No CustomizeOnInstantiate!
     print(f'=== CustomizeOnInstantiate ===')
@@ -321,7 +336,242 @@ def scrub_the_ovf(ovf_file, backup_file=None):
                 print("ERROR: Unable to get disk size")
                 specified_capacity_bytes = '0'
 
-    tree.write(ovf_file,
-               encoding='utf-8',
-               xml_declaration=True,
-               method='xml')
+    tree.write(
+        ovf_file,
+        encoding='utf-8',
+        xml_declaration=True,
+        method='xml')
+
+
+def get_disk_map_from_ovf(the_ovf):
+    """
+    Read an OVF file and return a mapping of the disk file(s) to VMs
+    :param the_ovf: full opath to the OVF
+    :return: list of OvfDisk objects
+    """
+    if os.path.isfile(the_ovf):
+        namespaces = register_all_namespaces(the_ovf)
+        tree = ET.parse(the_ovf)
+        root = tree.getroot()
+
+        # Read the disks from the References section
+        disks = {}
+        for files in root.findall('ovf:References', namespaces=namespaces):
+            for f in files.findall('ovf:File', namespaces=namespaces):
+                if 'file' in f.get('{http://schemas.dmtf.org/ovf/envelope/1}id'):
+                    new_disk = OvfDisk()
+                    new_disk.file_ref = f.get(
+                        '{http://schemas.dmtf.org/ovf/envelope/1}id')
+                    new_disk.file_name = f.get(
+                        '{http://schemas.dmtf.org/ovf/envelope/1}href')
+                    disks[f.get(
+                        '{http://schemas.dmtf.org/ovf/envelope/1}id')] = new_disk
+
+        logging.debug(
+            '*** VMDK file IDs ("file-") and Local File Names from References Section')
+        for disk_key in disks.keys():
+            disk_obj = disks[disk_key]
+            logging.debug(f'{disk_obj.file_name} => {disk_obj.file_ref}')
+
+        # a table of OvfDisks, indexed by a different key to facilitate lookups in the next section
+        disks_by_vmdisk = {}
+        for disk in root.findall('ovf:DiskSection', namespaces=namespaces):
+            for d in disk.findall('ovf:Disk', namespaces=namespaces):
+                ref = d.get('{http://schemas.dmtf.org/ovf/envelope/1}fileRef')
+                try:
+                    disks[ref].disk_id = d.get(
+                        '{http://schemas.dmtf.org/ovf/envelope/1}diskId')
+                    disks_by_vmdisk[disks[ref].disk_id] = disks[ref]
+                except KeyError as e:
+                    logging.error(
+                        f'BAD OVF? This should not be happening: {e}')
+
+        logging.debug('*** Disk ID ("vmdisk-") from DiskSection')
+        for disk_key in disks.keys():
+            disk_obj = disks[disk_key]
+            logging.debug(f'{disk_obj.file_name} => {disk_obj.disk_id}')
+
+        for vsc in root.findall('ovf:VirtualSystemCollection', namespaces=namespaces):
+            for vs in vsc.findall('ovf:VirtualSystem', namespaces=namespaces):
+                vm_name = vs.attrib.get(
+                    '{http://schemas.dmtf.org/ovf/envelope/1}id')
+                logging.debug(f'{vm_name}')
+                for vhs in vs.findall('ovf:VirtualHardwareSection', namespaces=namespaces):
+                    for item in vhs.findall('ovf:Item', namespaces=namespaces):
+                        for resource in item.findall('rasd:Description', namespaces=namespaces):
+                            if resource.text.upper() == 'HARD DISK':
+                                hard_disk_name = (item.findall(
+                                    'rasd:ElementName', namespaces=namespaces))[0].text
+                                hard_disk_file = (item.findall(
+                                    'rasd:HostResource', namespaces=namespaces))[0].text[10:]
+                                logging.debug(
+                                    f"\t{hard_disk_name} => {hard_disk_file}")
+                                disks[disks_by_vmdisk[hard_disk_file].file_ref].vm_name = vm_name
+                                disks[disks_by_vmdisk[hard_disk_file].file_ref].vm_disk_id = \
+                                    hard_disk_name
+        # print an intermediate disk map
+        for key in disks.keys():
+            disk_obj = disks[key]
+            logging.debug(
+                f'{disk_obj.file_name} => {disk_obj.vm_name} : {disk_obj.vm_disk_id}')
+
+        # Create a map that uses "vm_name:disk_id" as the key and the filename as the value
+        vm_hd_file_map = {}
+        for key in disks.keys():
+            disk_obj = disks[key]
+            new_key = f"{disk_obj.vm_name}:{disk_obj.vm_disk_id}"
+            vm_hd_file_map[new_key] = disk_obj.file_name
+        return vm_hd_file_map
+
+
+def remap_ovf_for_rsync(source_file,
+                        target_file,
+                        lib_dir,
+                        seed_dir):
+    """
+    Read target OVF to obtain file names and disk-to-VM mappings, read source OVF for the same and map files on disk
+    from the original to the matching target names to facilitate efficient delta rsyncing
+    :param source_file: OVF describing existing/old file mappings (full path)
+    :param target_file: OVF describing target/new file mappings (full path)
+    :param lib_dir: the path containing the existing OVF library
+    :param seed_dir: the temporary path used for remapping
+    :return: ??
+    """
+
+    # TODO - Set the stage:
+    #  Old OVF is in full_path_lib/TEMPLATE/TEMPLATE.OVF
+    #  New OVF is in full_path_seed/TEMPLATE2/TEMPLATE2.OVF
+    #  The process involves renaming/moving the LIB to the SEED while renaming files
+    #  DROPPING the RENAMED_INVALID flag so that the rsync process can be run (not deleting any files from SEED)
+    #  REMOVING the full_path_lib/TEMPLATE directory upon successful move of SEED files
+    #  Once rsync is done (not part of this function), the RENAMED_INVALID flag is removed
+
+    print('=============  READING OVFs ==============')
+    old_vm_disk_file_map = get_disk_map_from_ovf(source_file)
+    new_vm_disk_file_map = get_disk_map_from_ovf(target_file)
+    print('=============  REMAPPING ==============')
+    # compare the maps and build a "work list: rename file X to file Y"
+    t = PrettyTable(['VM', 'Disk', 'Old File Name', 'New File Name'])
+    old_file_name = ''
+    new_file_name = ''
+    for vm_disk in old_vm_disk_file_map.keys():
+        try:
+            old_file_name = old_vm_disk_file_map[vm_disk]
+            new_file_name = new_vm_disk_file_map[vm_disk]
+            (vm, disk) = vm_disk.split(':')
+            table_line = [vm, disk, old_file_name, new_file_name]
+            t.add_row(table_line)
+            # TODO: I think this works (rename during move?)
+            shutil.move(os.path.join(seed_dir, old_file_name),
+                        os.path.join(lib_dir, new_file_name))
+        except KeyError:
+            logging.error(
+                f'*** {vm_disk} in OLD {old_file_name} is not present in NEW')
+            # TODO: remove the excess file?
+        except OSError:
+            logging.error(
+                f'error renaming {old_file_name} to {new_file_name} in {lib_dir}')
+    print(t)
+
+
+def build_extra_config_item(required: str, key: str, value: str):
+    extra = ET.Element('vmw:ExtraConfig')
+    # this controls the newline and spacing after the element... it is suboptimal
+    extra.tail = '\n                '
+    extra.set('ovf:required', required)
+    extra.set('vmw:key', key)
+    extra.set('vmw:value', value)
+    return extra
+
+
+def bubble_the_ovf(rtc_start_time: int, ovf_file: str, backup_file=None):
+    """
+    stuff all VMs into a "time bubble": the clock is set to the specified time at each boot
+    :param ovf_file: full path to OVF file
+    :param backup_file: full path to backup file (default replaces ".ovf" with ".ovf.backup")
+    :param rtc_start_time: epoch time for Time Bubble start
+    :return:
+    """
+    if backup_file is None:
+        backup_file_path = ovf_file.replace('.ovf', '.ovf.backup')
+    else:
+        backup_file_path = backup_file
+
+    namespaces = register_all_namespaces(ovf_file)
+    tree = ET.parse(ovf_file)
+    root = tree.getroot()
+
+    # create the backup
+    tree.write(backup_file_path, encoding='utf-8',
+               xml_declaration=True, method='xml')
+
+    # Time Bubble
+    print(
+        f'\n=== Time Bubble: {rtc_start_time} => {ctime(rtc_start_time)} ===')
+    found_existing_rtc = False
+    for vsc in root.findall('ovf:VirtualSystemCollection', namespaces=namespaces):
+        for vs in vsc.findall('ovf:VirtualSystem', namespaces=namespaces):
+            vm_name = vs.attrib.get(
+                '{http://schemas.dmtf.org/ovf/envelope/1}id')
+            print(f'{vm_name}')
+            for vhs in vs.findall('ovf:VirtualHardwareSection', namespaces=namespaces):
+                for item in vhs.findall('vmw:ExtraConfig', namespaces=namespaces):
+                    if item.get('{http://www.vmware.com/schema/ovf}key') == 'rtc.startTime':
+                        found_existing_rtc = True
+                        epoch = item.get(
+                            '{http://www.vmware.com/schema/ovf}value')
+                        print(
+                            f'Found existing bubble config: {epoch} => Date: {ctime(int(epoch))}')
+                # add the bubble properties
+                if not found_existing_rtc:
+                    vhs.append(build_extra_config_item(
+                        'true', 'time.synchronize.tools.enable', '0'))
+                    vhs.append(build_extra_config_item(
+                        'true', 'time.synchronize.tools.startup', '0'))
+                    vhs.append(build_extra_config_item(
+                        'true', 'rtc.startTime', str(rtc_start_time)))
+                # TODO: why do these append without a newline? Does it matter aside from aesthetics?
+                # TODO: future - if rtc_start_time is 0, remove the bubble?
+    tree.write(ovf_file, encoding='utf-8', xml_declaration=True, method='xml')
+
+
+def unbubble_the_ovf(ovf_file: str, backup_file=None):
+    """
+    undo a "time bubble"
+    :param ovf_file: full path to OVF file
+    :param backup_file: full path to backup file (default replaces ".ovf" with ".ovf.backup")
+    :return:
+    """
+    if backup_file is None:
+        backup_file_path = ovf_file.replace('.ovf', '.ovf.backup')
+    else:
+        backup_file_path = backup_file
+
+    namespaces = register_all_namespaces(ovf_file)
+    tree = ET.parse(ovf_file)
+    root = tree.getroot()
+
+    # create the backup
+    tree.write(backup_file_path, encoding='utf-8',
+               xml_declaration=True, method='xml')
+
+    # UNDO a Time Bubble
+    bubble_keys = ('rtc.startTime', 'time.synchronize.tools.enable',
+                   'time.synchronize.tools.startup')
+    for vsc in root.findall('ovf:VirtualSystemCollection', namespaces=namespaces):
+        for vs in vsc.findall('ovf:VirtualSystem', namespaces=namespaces):
+            vm_name = vs.attrib.get(
+                '{http://schemas.dmtf.org/ovf/envelope/1}id')
+            print(f'{vm_name}')
+            for vhs in vs.findall('ovf:VirtualHardwareSection', namespaces=namespaces):
+                for item in vhs.findall('vmw:ExtraConfig', namespaces=namespaces):
+                    item_key = item.get(
+                        '{http://www.vmware.com/schema/ovf}key')
+                    if item_key in bubble_keys:
+                        if item_key == 'rtc.startTime':
+                            epoch = item.get(
+                                '{http://www.vmware.com/schema/ovf}value')
+                            print(
+                                f'Scrubbing existing bubble config: {epoch} => Date: {ctime(int(epoch))}')
+                        vhs.remove(item)
+    tree.write(ovf_file, encoding='utf-8', xml_declaration=True, method='xml')
