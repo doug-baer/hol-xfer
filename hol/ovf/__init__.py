@@ -289,8 +289,15 @@ def scrub_the_ovf(ovf_file, backup_file=None):
         for d in disk.findall('ovf:Disk', namespaces=namespaces):
             specified_capacity = int(
                 d.get('{http://schemas.dmtf.org/ovf/envelope/1}capacity'))
-            populated_size_bytes = int(
-                d.get('{http://schemas.dmtf.org/ovf/envelope/1}populatedSize'))
+            # TODO: find out why this is not always present in the OVF!
+            populated_size_bytes = 0
+            populated_size = d.get(
+                '{http://schemas.dmtf.org/ovf/envelope/1}populatedSize')
+            try:
+                populated_size_bytes = int(populated_size)
+            except TypeError:
+                logging.warning(
+                    'populatedSize is not present in this OVF. No EZT mitigations performed. ')
             file_size_bytes = int(
                 disks[d.get('{http://schemas.dmtf.org/ovf/envelope/1}fileRef')])
 
@@ -303,30 +310,39 @@ def scrub_the_ovf(ovf_file, backup_file=None):
                     increase_mb = math.ceil(
                         disk_size_difference / BYTES_PER_MB)
                     new_capacity_size_mb = specified_capacity + increase_mb
-                    print(f'Disk is {disk_size_difference} bytes too small for contents, increasing from '
-                          f'{specified_capacity} to {new_capacity_size_mb} MB')
-                    d.set('{http://schemas.dmtf.org/ovf/envelope/1}capacity',
-                          str(new_capacity_size_mb))
+                    print(
+                        f'Disk is {disk_size_difference} bytes too small for contents, increasing from '
+                        f'{specified_capacity} to {new_capacity_size_mb} MB')
+                    d.set(
+                        '{http://schemas.dmtf.org/ovf/envelope/1}capacity',
+                        str(new_capacity_size_mb))
             elif 'byte * 2^30' in d.get('{http://schemas.dmtf.org/ovf/envelope/1}capacityAllocationUnits'):
                 # work around "60% full means EZT" issue
                 specified_capacity_bytes = int(
                     specified_capacity * BYTES_PER_GB)
                 new_size = math.ceil(
                     populated_size_bytes / (EZT_BUG_TRIGGER_PERCENTAGE/100) / BYTES_PER_GB)
-                if new_size < 1:
+                if new_size < 1 and populated_size_bytes != 0:
                     print(
                         f"WARNING: MINIMALLY USED DISK!! {d.get('{http://schemas.dmtf.org/ovf/envelope/1}fileRef')}")
                     new_size = 1
-                new_full_percent = 100 * populated_size_bytes / \
-                    (new_size * BYTES_PER_GB)
+                if new_size > 0:
+                    new_full_percent = 100 * populated_size_bytes / \
+                        (new_size * BYTES_PER_GB)
+                else:
+                    # not the cleanest, but do something when we have no data to act upon
+                    new_full_percent = EZT_BUG_TRIGGER_PERCENTAGE + 10
                 percent_full = 100 * populated_size_bytes / specified_capacity_bytes
-                print(f'Populated data is {populated_size_bytes} / {specified_capacity_bytes} = '
-                      f'{percent_full:.2f}% ')
+                print(
+                    f'Populated data is {populated_size_bytes} / {specified_capacity_bytes} = '
+                    f'{percent_full:.2f}% ')
                 if percent_full > EZT_BUG_TRIGGER_PERCENTAGE:
-                    print(f'Disk is too small for thin. Increased from {specified_capacity} '
-                          f'to {new_size} GB ({new_full_percent:.2f}%) full')
+                    print(
+                        f'Disk is too small for thin. Increased from {specified_capacity} '
+                        f'to {new_size} GB ({new_full_percent:.2f}%) full')
                     d.set(
-                        '{http://schemas.dmtf.org/ovf/envelope/1}capacity', str(new_size))
+                        '{http://schemas.dmtf.org/ovf/envelope/1}capacity',
+                        str(new_size))
 
             elif 'byte * 2^40' in d.get('{http://schemas.dmtf.org/ovf/envelope/1}capacityAllocationUnits'):
                 specified_capacity_bytes = int(
