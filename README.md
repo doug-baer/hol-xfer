@@ -64,4 +64,8 @@ Import an ISO image to Cloud Director
 
 
 -Doug Baer
-22 January 2025
+
+
+2 August 2025
+
+NOTE: pyvcloud using OVAs for imports and exports is horribly inefficient for templates larger than a few hundred MB. Providing some patched files to work around that and a new import_ovf_new.py that uses the new mechanism so that I can work around a POST size limitation in a public cloud. Also patched client.py so that it doesn't puke when calling logout() with the new cloudapi calls required for (VCD API v38.0+ ? )

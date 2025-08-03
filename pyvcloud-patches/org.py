@@ -599,8 +599,8 @@ class Org(object):
 
         :param str catalog_name: name of the catalog where the template will
             be uploaded.
-        :param str file_name: name of the ova file on local disk which will be
-            uploaded.
+        :param str file_name: name of the ovf file on local disk which will be
+            uploaded (in a directory with the same name).
         :param str item_name: this param lets us rename the template once
             uploaded to the catalog. If this param is not specified, the
             catalog item will share the same name as the file being
