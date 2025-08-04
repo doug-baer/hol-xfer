@@ -15,6 +15,8 @@
 
 # August 2, 2025 - Doug Baer updated upload_ovf() bewcause using OVA is terribly inefficient.
 
+# August 4, 2025 - Doug Baer working on _download_ovf() (again, the whole OVA process is NOT efficient: there is no need to TAR the output)
+
 
 import math
 import os
@@ -457,7 +459,103 @@ class Org(object):
                                                chunk_size, callback)
         return bytes_written
 
-    def _download_ovf(self, entity_resource, file_name, chunk_size, callback):
+    def _download_ova(self, entity_resource, file_name, chunk_size, callback):
+        """Helper method to download a template from vCD catalog as an OVF and
+            its comnponent files WITHOUT wasting time shoving them into a TAR (OVA)
+
+        :param lxml.objectify.ObjectifiedElement entity_resource: an object
+            containing EntityType.MEDIA or EntityType.VAPP_TEMPLATE XML data
+            describing the entity corresponding to the catalog item which
+            needs to be downloaded.
+        :param str file_name: name of the target file on local disk where
+            the contents of the catalog item will be downloaded to.
+        :param int chunk_size: size of chunks in which the catalog item will
+            be downloaded and written to the disk.
+        :param function callback: a function with signature
+            function(bytes_written, total_size) to let the caller monitor
+            progress of the download operation.
+
+        :return: number of bytes written to file.
+
+        :rtype: int
+        """
+        ovf_descriptor = self.client.get_linked_resource(
+            entity_resource, RelationType.DOWNLOAD_DEFAULT,
+            EntityType.TEXT_XML.value)
+
+        ovf_descriptor_uri = find_link(entity_resource,
+                                       RelationType.DOWNLOAD_DEFAULT,
+                                       EntityType.TEXT_XML.value).href
+        transfer_uri_base = ovf_descriptor_uri.rsplit('/', 1)[0] + '/'
+
+        tempdir = None
+        cwd = os.getcwd()
+        try:
+            ovf_file_name = file_name  # this should be a full path to the .ovf file
+            ovf_path = os.path.dirname(ovf_file_name)
+            # ovf_name = os.path.basename(ovf_file_name) # just the name of the OVF file itself
+            ovf_file = ovf_file_name
+
+            os.makedirs(ovf_path, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"Error creating directory: {e}")
+
+            # tempdir = tempfile.mkdtemp(dir='.')
+            # ovf_file = os.path.join(tempdir, 'descriptor.ovf')
+            with open(ovf_file, 'wb') as f:
+                payload = etree.tostring(
+                    ovf_descriptor,
+                    pretty_print=True,
+                    xml_declaration=True,
+                    encoding='utf-8')
+                f.write(payload)
+
+            total_bytes_written = 0
+            if os.path.exists(ovf_file):
+                stat_info = os.stat(ovf_file)
+                total_bytes_written = stat_info.st_size
+
+            ns = '{' + NSMAP['ovf'] + '}'
+            files_to_tar = []
+            for f in ovf_descriptor.References.File:
+                source_file_name = f.get(ns + 'href')
+                source_file_size = int(f.get(ns + 'size'))
+
+                # TODO() Add support for ns + 'chunkSize' - will need support
+                # for downloading part of a file at an offset from an uri.
+
+                target_file = os.path.join(tempdir, source_file_name)
+                uri = transfer_uri_base + source_file_name
+                num_bytes = self.client.download_from_uri(
+                    uri,
+                    target_file,
+                    chunk_size=chunk_size,
+                    size=str(source_file_size),
+                    callback=callback)
+                if num_bytes != source_file_size:
+                    raise DownloadException(
+                        'Download incomplete for file %s' % source_file_name)
+                else:
+                    total_bytes_written += num_bytes
+                # files_to_tar.append(source_file_name)
+
+            # with tarfile.open(file_name, 'w') as tar:
+            #     os.chdir(tempdir)
+            #     tar.add('descriptor.ovf')
+            #     for f in files_to_tar:
+            #         tar.add(f)
+        # finally:
+        #     if tempdir is not None:
+        #         os.chdir(cwd)
+        #         bytes_written = 0
+        #         if os.path.exists(file_name):
+        #             stat_info = os.stat(file_name)
+        #             bytes_written = stat_info.st_size
+        #         shutil.rmtree(tempdir)
+
+        return total_bytes_written
+
+    def _download_ova(self, entity_resource, file_name, chunk_size, callback):
         """Helper method to download an ova file from vCD catalog.
 
         :param lxml.objectify.ObjectifiedElement entity_resource: an object

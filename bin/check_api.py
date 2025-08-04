@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO, force=True)
 
 
-def perform_vcd_import(cloud_host, cloud_org, credentials):
+def perform_vcd_check(cloud_host, cloud_org, credentials):
 
     user_name, vcd_password = get_cloud_creds(
         credentials, cloud_host, cloud_org)
@@ -53,6 +53,6 @@ if __name__ == '__main__':
     config = read_hol_xfer_config(args.yaml_config_path)
     creds = read_hol_xfer_auth(config['Tools']['credentials'])
 
-    perform_vcd_import(args.cloud_host,
-                       args.cloud_org,
-                       creds)
+    perform_vcd_check(args.cloud_host,
+                      args.cloud_org,
+                      creds)
